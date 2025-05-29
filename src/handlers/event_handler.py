@@ -147,37 +147,50 @@ class EventHandler:
                 await event.reply(f"处理消息时出错: {str(e)}")
 
     async def _handle_message_transfer(self, event):
-        """处理消息转发（适用于机器人客户端）"""
-        if not self.transfer_config:
-            return
+    """处理消息转发（适用于机器人客户端）"""
+    if not self.transfer_config:
+        return
 
-        # 获取当前聊天的ID
-        chat_id = event.chat_id
+    # 获取当前聊天的ID
+    chat_id = event.chat_id
 
-        # 遍历转发配置
-        for transfer in self.transfer_config:
-            source_chat = transfer.get("source_chat")
-            target_chat = transfer.get("target_chat")
-            include_keywords = transfer.get("include_keywords", [])
+    # 遍历转发配置
+    for transfer in self.transfer_config:
+        source_chat = transfer.get("source_chat")
+        target_chat = transfer.get("target_chat")
+        include_keywords = transfer.get("include_keywords", [])
+        exclude_keywords = transfer.get("exclude_keywords", [])
 
-            # 检查是否匹配源聊天
-            if str(chat_id) == str(source_chat):
-                # 检查是否需要根据关键词过滤
-                should_transfer = True
-                if include_keywords:
-                    message_text = event.message.text if event.message.text else ""
-                    # 如果指定了关键词，至少匹配一个关键词才转发
-                    should_transfer = any(
-                        keyword in message_text for keyword in include_keywords
-                    )
+        # 检查是否匹配源聊天
+        if str(chat_id) == str(source_chat):
+            # 默认允许转发
+            should_transfer = True
 
-                if should_transfer:
-                    try:
-                        # 转发消息
-                        await event.client.forward_messages(target_chat, event.message)
-                        logger.info(f"已将消息从 {source_chat} 转发到 {target_chat}")
-                    except Exception as e:
-                        logger.error(f"转发消息时出错: {str(e)}")
+            message_text = event.message.text or ""
+
+            # ❗先检查 exclude_keywords（黑名单优先）
+            if exclude_keywords and any(keyword in message_text for keyword in exclude_keywords):
+                should_transfer = False
+                logger.info(
+                    f"消息包含 exclude_keywords（{exclude_keywords}），不进行转发"
+                )
+                continue  # 跳过该条配置
+
+            # ✅ 检查 include_keywords（白名单）
+            if include_keywords and not any(keyword in message_text for keyword in include_keywords):
+                should_transfer = False
+                logger.info(
+                    f"消息未命中 include_keywords（{include_keywords}），不进行转发"
+                )
+                continue  # 跳过该条配置
+
+            # 转发消息
+            if should_transfer:
+                try:
+                    await event.client.forward_messages(target_chat, event.message)
+                    logger.info(f"已将消息从 {source_chat} 转发到 {target_chat}")
+                except Exception as e:
+                    logger.error(f"转发消息时出错: {str(e)}")
 
     async def _handle_douyin_message(self, event):
         try:
